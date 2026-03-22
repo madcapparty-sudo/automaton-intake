@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Agent Diagnostic — Automaton Systems</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0e1a;color:#e8e4d9;font-family:'Courier New',monospace;min-height:100vh}
+  input,textarea,button{font-family:'Courier New',monospace}
+  textarea{resize:vertical}
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:#0a0e1a}
+  ::-webkit-scrollbar-thumb{background:rgba(251,188,4,0.3);border-radius:3px}
+  @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @media print{
+    .np{display:none!important}
+    body{background:white!important;color:black!important}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useRef}=React;
+
+
+const SECTIONS=[
+  {id:1,title:"Understanding Your World",questions:[
+    {id:1,text:"How many people are on your team and what do they each do day to day?",
+      example:"I manage 14 people — 3 project architects, 6 construction crew leads, 2 site supervisors, a permit coordinator, an admin assistant, and a junior estimator. The architects handle drawings and client revisions, the crew leads manage their trades on site, and the supervisors report back to me daily."},
+    {id:2,text:"What does a typical Monday morning look like for you?",
+      example:"I get in around 7am and immediately check my phone for any weekend site issues. Then I do a quick walk of whatever active site is closest, attend a 9am all-hands standup, then spend the rest of the morning chasing emails about permit status and responding to subcontractor questions. By noon I haven't touched my actual work yet."},
+    {id:3,text:"What's the first thing you deal with when something goes wrong on a project?",
+      example:"I find out from someone calling me directly — usually a crew lead or the site supervisor. Then I have to manually call or text everyone else to figure out the full picture, check the schedule to see how bad the delay is, and then decide whether to call the client or wait until I know more."},
+    {id:4,text:"How do you currently track what everyone is working on?",
+      example:"Honestly, a mix of things. We use a shared Google Sheet for the master schedule, but half the team doesn't update it. I also have a whiteboard in my office. Most of what I know comes from the Monday standup and just asking people directly throughout the week."},
+    {id:5,text:"Where does information live — email, spreadsheets, a project management tool, people's heads?",
+      example:"Everywhere. Permit documents are in email threads. The schedule is in Google Sheets but it's always out of date. Change orders are in a folder on the shared drive that nobody organizes. And honestly, a lot of critical info just lives in my head or my project manager's head."},
+  ]},
+  {id:2,title:"Finding the Friction",questions:[
+    {id:6,text:"What's the one thing that eats up your time that you wish someone else could handle?",
+      example:"Chasing subcontractors for updates and then compiling those updates into a status report for the owner. I probably spend 6-8 hours a week just gathering information that already exists somewhere — I just have to go find it and reformat it for whoever's asking."},
+    {id:7,text:"What tasks do you find yourself doing repeatedly every week?",
+      example:"Sending the weekly project status report to clients, updating the schedule after every site visit, reminding crew leads to submit their daily logs, checking permit expiration dates, and reconciling the budget spreadsheet after new invoices come in."},
+    {id:8,text:"Where do things fall through the cracks most often?",
+      example:"Follow-up tasks from meetings. We'll have a site meeting, agree on action items, and then three weeks later nobody did half of them because it was never formally assigned or tracked anywhere. Also permit renewal deadlines — we've had close calls."},
+    {id:9,text:"What's the most common reason a project gets delayed?",
+      example:"Either a permit taking longer than expected, or a subcontractor not showing up when they're supposed to and nobody catching it until we're already behind. The second one is almost always preventable — we just don't have a good early warning system."},
+    {id:10,text:"How do you find out when something is behind schedule — do you have to ask, or does it come to you?",
+      example:"I almost always have to ask. Nobody volunteers bad news. By the time I find out something is slipping, we're usually already a week behind. I'd love a system that flags things automatically before they become a real problem."},
+  ]},
+  {id:3,title:"Communication",questions:[
+    {id:11,text:"How do your employees update you on their progress?",
+      example:"Verbally in the Monday standup, or by texting me directly. We have a daily log form that site supervisors are supposed to fill out but about half the time I have to remind them. There's no consistent system — everyone does it differently."},
+    {id:12,text:"How much time do you spend in meetings vs. actually doing work?",
+      example:"Probably 60% meetings, 40% actual work, and that ratio feels backwards. We have the Monday all-hands, a Tuesday client call for each active project, a Thursday internal review, plus random site visits and calls that pop up. I feel like I'm always in a meeting or about to be in one."},
+    {id:13,text:"Do you ever feel like you're chasing people for updates?",
+      example:"Constantly. Subcontractors especially. I'll send an email asking for a status update and hear nothing for two days. Then I text, then I call. It's exhausting and it takes time away from everything else I should be doing."},
+    {id:14,text:"How do you communicate priorities to your team?",
+      example:"Mainly in the Monday standup and by texting people directly when something is urgent. We don't have a great system for it — sometimes I'll send a group text, sometimes an email. There's no central place where the team can see what's most important this week."},
+  ]},
+  {id:4,title:"Documents & Data",questions:[
+    {id:15,text:"What documents do you deal with most — contracts, permits, schedules, reports?",
+      example:"Permits are the biggest headache — tracking applications, approvals, expiration dates across multiple active projects. Then change orders, which require sign-off from the client, the architect, and sometimes the city. Weekly progress reports for clients. And subcontractor invoices that need to match against the budget."},
+    {id:16,text:"How much time do you spend on paperwork or admin tasks per week?",
+      example:"Easily 15-20 hours a week. Writing up meeting notes, preparing client reports, filling out permit applications, processing invoices, updating the project schedule. It's the part of the job I like least and it takes up the most time."},
+    {id:17,text:"Do you ever have to pull from multiple places to answer a simple question?",
+      example:"All the time. If a client asks 'what's the current status of the Henderson project,' I have to check the schedule spreadsheet, dig through emails for the latest permit update, check my notes from the last site visit, and look at the budget tracker. It takes 20 minutes to answer a question that should take 20 seconds."},
+    {id:18,text:"Is there anything you track manually that you wish was automatic?",
+      example:"Permit expiration dates and renewal reminders for sure. Also subcontractor certificate of insurance expiration — if one lapses we can't have them on site and it shuts down work. And I manually compile the weekly budget report from three different spreadsheets every Friday afternoon."},
+  ]},
+  {id:5,title:"The Dream",questions:[
+    {id:19,text:"If you had an assistant who never slept and never forgot anything, what would you have them do first?",
+      example:"Send a message to every crew lead every morning asking for a one-line status update, then compile all those responses into a single summary and have it on my phone by 8am. That alone would save me two hours a day and I'd actually know what's happening on every site without having to call everyone."},
+    {id:20,text:"What would a perfect week look like for you in this role?",
+      example:"I'd spend Monday planning and reviewing, Tuesday and Wednesday on site or with clients, Thursday doing actual design and estimating work, and Friday reviewing reports that were already compiled for me. No chasing people, no hunting for information, no last-minute surprises. Everything would just flow to me instead of me having to go find it."},
+    {id:21,text:"What would make you feel like you actually have control over your team and projects?",
+      example:"Knowing that if something is going off track, I'll find out before it becomes a crisis — not after. And having one place I can look to see the real status of every project and every person without having to ask around. Right now I feel like I'm always reacting. I'd love to actually be ahead of things for once."},
+  ]},
+];
+
+const ALL_Q=SECTIONS.flatMap(s=>s.questions);
+
+const SYS_PROMPT=(hasCal)=>`You are an AI automation consultant. Analyze this client intake and return ONLY valid JSON. No markdown, no backticks, no explanation — raw JSON only.
+
+${hasCal?"A calendar/schedule file has been uploaded. Use it to identify recurring blocks, meeting-heavy days, and best automation windows.":""}
+
+Return exactly this structure:
+{
+  "clientSummary": "2-3 sentence overview of their role and biggest challenges",
+  "jobType": "Administrative or Operational or Mixed",
+  "topPainPoints": [
+    { "pain": "short label", "severity": "High or Medium or Low", "evidence": "quote or paraphrase from answers" }
+  ],
+  "recommendedAgents": [
+    {
+      "name": "Agent name",
+      "priority": 1,
+      "what": "What this agent does in one sentence",
+      "why": "Why this matches their specific answers",
+      "buildComplexity": "Quick Win or Medium Build or Complex Build",
+      "clientBenefit": "Plain English benefit. No tech terms. 1-2 sentences.",
+      "technicalSpec": {
+        "stack": ["specific tech needed"],
+        "integrations": ["systems to connect"],
+        "triggerMechanism": "how it activates",
+        "outputFormat": "what it produces",
+        "estimatedBuildTime": "e.g. 4-6 hours",
+        "dependencies": ["must be built first or none"]
+      }
+    }
+  ],
+  "clientRoadmap": [
+    {
+      "phase": 1,
+      "label": "Simple phase label",
+      "timeframe": "e.g. Week 1",
+      "whatChanges": "Plain English: what gets better for the client. No tech terms.",
+      "milestones": ["Benefit milestone 1", "Benefit milestone 2"]
+    }
+  ],
+  "builderRoadmap": [
+    {
+      "phase": 1,
+      "label": "Technical phase label",
+      "timeframe": "e.g. Week 1",
+      "agents": ["agent names to build"],
+      "tasks": ["specific technical task 1", "task 2"],
+      "stack": ["tech stack items"],
+      "blockers": ["potential issues or none"],
+      "deliverable": "what ships at end of this phase"
+    }
+  ],
+  "calendarInsights": ${hasCal?'"Observations from their schedule — busy days, patterns, best automation windows"':'null'},
+  "quickWins": ["automatable thing 1", "automatable thing 2", "automatable thing 3"],
+  "notes": "Private builder notes — edge cases, caveats, watch-outs"
+}`;
+
+// ── Primitives ──────────────────────────────────────────────────────────────
+const GridBg=()=>(
+  <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",
+    backgroundImage:"linear-gradient(rgba(251,188,4,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(251,188,4,0.05) 1px,transparent 1px)",
+    backgroundSize:"40px 40px"}}/>
+);
+
+const Corners=()=>(
+  <>
+    {[{top:16,left:16,borderTop:"2px solid rgba(251,188,4,0.3)",borderLeft:"2px solid rgba(251,188,4,0.3)"},
+      {top:16,right:16,borderTop:"2px solid rgba(251,188,4,0.3)",borderRight:"2px solid rgba(251,188,4,0.3)"},
+      {bottom:16,left:16,borderBottom:"2px solid rgba(251,188,4,0.3)",borderLeft:"2px solid rgba(251,188,4,0.3)"},
+      {bottom:16,right:16,borderBottom:"2px solid rgba(251,188,4,0.3)",borderRight:"2px solid rgba(251,188,4,0.3)"},
+    ].map((s,i)=><div key={i} style={{position:"fixed",width:20,height:20,zIndex:100,...s}}/>)}
+  </>
+);
+
+const PAL={
+  red:{bg:"#3d1a1a",border:"#c0392b",text:"#ff6b6b"},
+  amber:{bg:"#2d2a14",border:"#d4ac0d",text:"#f4d03f"},
+  green:{bg:"#1a2d1a",border:"#27ae60",text:"#58d68d"},
+  blue:{bg:"#1a1a2d",border:"#5b7cf7",text:"#89a4ff"},
+};
+const Badge=({label,color})=>{const c=PAL[color]||PAL.amber;return(
+  <span style={{background:c.bg,border:`1px solid ${c.border}`,color:c.text,
+    fontSize:10,fontFamily:"monospace",letterSpacing:2,padding:"2px 8px",borderRadius:2}}>
+    {label.toUpperCase()}
+  </span>
+);};
+
+const sevC={High:"red",Medium:"amber",Low:"green"};
+const cplxC={"Quick Win":"green","Medium Build":"amber","Complex Build":"blue"};
+
+// ── Shared styles ────────────────────────────────────────────────────────────
+const S={
+  wrap:{maxWidth:780,margin:"0 auto",padding:"40px 24px",position:"relative",zIndex:1},
+  lbl:{fontSize:11,letterSpacing:3,color:"#fbbC04",marginBottom:8,display:"block"},
+  inp:{width:"100%",boxSizing:"border-box",background:"rgba(251,188,4,0.05)",
+    border:"1px solid rgba(251,188,4,0.25)",color:"#e8e4d9",fontSize:14,
+    padding:"10px 14px",borderRadius:2,outline:"none"},
+  ta:{width:"100%",boxSizing:"border-box",background:"rgba(251,188,4,0.05)",
+    border:"1px solid rgba(251,188,4,0.18)",color:"#e8e4d9",fontSize:13,
+    padding:"10px 14px",borderRadius:2,outline:"none",minHeight:90},
+  btn:{background:"#fbbC04",color:"#0a0e1a",border:"none",fontWeight:"bold",
+    fontSize:13,letterSpacing:2,padding:"12px 28px",cursor:"pointer",borderRadius:2},
+  ghost:{background:"transparent",color:"rgba(232,228,217,0.45)",
+    border:"1px solid rgba(232,228,217,0.12)",fontSize:12,letterSpacing:1,
+    padding:"10px 20px",cursor:"pointer",borderRadius:2},
+  blue:{background:"rgba(89,164,255,0.1)",color:"#89a4ff",
+    border:"1px solid rgba(89,164,255,0.25)",fontSize:12,letterSpacing:1,
+    padding:"10px 20px",cursor:"pointer",borderRadius:2},
+  gold:{background:"rgba(244,208,63,0.08)",color:"#f4d03f",
+    border:"1px solid rgba(244,208,63,0.25)",fontSize:12,letterSpacing:1,
+    padding:"10px 20px",cursor:"pointer",borderRadius:2},
+  card:{border:"1px solid rgba(251,188,4,0.16)",background:"rgba(251,188,4,0.03)",
+    borderRadius:2,padding:"18px 22px",marginBottom:14},
+  sh:{fontSize:11,letterSpacing:4,color:"rgba(251,188,4,0.55)",marginBottom:6},
+  h2:{fontSize:22,color:"#e8e4d9",margin:"0 0 18px"},
+  tag:{background:"rgba(251,188,4,0.07)",border:"1px solid rgba(251,188,4,0.18)",
+    color:"rgba(251,188,4,0.65)",fontSize:10,letterSpacing:1,padding:"2px 8px",
+    borderRadius:2,display:"inline-block",margin:"2px"},
+  dim:{color:"rgba(232,228,217,0.4)",fontSize:12},
+};
+
+// ── Storage helpers ───────────────────────────────────────────────────────────
+const SAVE_KEY="automaton_saves";
+function listSaves(){try{return JSON.parse(localStorage.getItem(SAVE_KEY)||"{}");}catch{return {};}}
+function writeSave(name,data){const saves=listSaves();saves[name]={...data,savedAt:Date.now()};localStorage.setItem(SAVE_KEY,JSON.stringify(saves));}
+function deleteSave(name){const saves=listSaves();delete saves[name];localStorage.setItem(SAVE_KEY,JSON.stringify(saves));}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+function App(){
+  const[screen,setScreen]=useState("intro");
+  const[sec,setSec]=useState(0);
+  const[clientName,setClientName]=useState("");
+  const[clientRole,setClientRole]=useState("");
+  const[answers,setAnswers]=useState({});
+  const[calText,setCalText]=useState("");
+  const[calFile,setCalFile]=useState("");
+  const[report,setReport]=useState(null);
+  const[view,setView]=useState("client");
+  const[error,setError]=useState(null);
+  const[saves,setSaves]=useState(listSaves());
+  const[showSaves,setShowSaves]=useState(false);
+  const[saveMsg,setSaveMsg]=useState("");
+  const fileRef=useRef();
+
+  const section=SECTIONS[sec];
+  const progress=(Object.keys(answers).filter(k=>answers[k]?.trim()).length/ALL_Q.length)*100;
+  const secDone=section?.questions.every(q=>answers[q.id]?.trim());
+
+  // Auto-save whenever answers/name/role/sec change
+  const autoSave=(name,role,ans,s)=>{
+    if(!name.trim()) return;
+    writeSave(name.trim(),{clientName:name,clientRole:role,answers:ans,sec:s});
+    setSaves(listSaves());
+  };
+
+  const handleFile=(e)=>{
+    const f=e.target.files[0];if(!f)return;
+    setCalFile(f.name);
+    const r=new FileReader();
+    r.onload=(ev)=>setCalText(typeof ev.target.result==="string"?ev.target.result.slice(0,6000):"");
+    r.readAsText(f);
+  };
+
+  const analyze=async()=>{
+    setScreen("analyzing");setError(null);
+    const formatted=ALL_Q.map(q=>`Q${q.id}: ${q.text}\nA: ${answers[q.id]||"(no answer)"}`).join("\n\n");
+    let msg=`Client: ${clientName}\nRole: ${clientRole}\n\n${formatted}`;
+    if(calText) msg+=`\n\n--- SCHEDULE ---\n${calText}`;
+    try{
+      const res=await fetch("/.netlify/functions/analyze",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          system:SYS_PROMPT(!!calText),
+          messages:[{role:"user",content:msg}],
+        }),
+      });
+      const data=await res.json();
+      if(data.error) throw new Error(data.error.message);
+      const txt=data.content?.map(c=>c.text||"").join("")||"";
+      const clean=txt.replace(/```json|```/g,"").trim();
+      setReport(JSON.parse(clean));
+      setScreen("report");
+    }catch(e){
+      setError("Analysis failed: "+e.message);
+      setScreen("form");
+    }
+  };
+
+  const handleNext=()=>{if(sec<SECTIONS.length-1)setSec(p=>p+1);else analyze();};
+
+  const loadSave=(name)=>{
+    const s=listSaves()[name];
+    if(!s) return;
+    setClientName(s.clientName||"");
+    setClientRole(s.clientRole||"");
+    setAnswers(s.answers||{});
+    setSec(s.sec||0);
+    setReport(null);setError(null);setCalText("");setCalFile("");
+    setShowSaves(false);
+    setScreen("form");
+  };
+
+  const handleDeleteSave=(name,e)=>{
+    e.stopPropagation();
+    if(window.confirm(`Delete save for "${name}"?`)){deleteSave(name);setSaves(listSaves());}
+  };
+
+  const reset=()=>{
+    if(clientName.trim()) deleteSave(clientName.trim());
+    setScreen("intro");setAnswers({});setSec(0);setReport(null);
+    setClientName("");setClientRole("");setCalText("");setCalFile("");setError(null);
+    setSaves(listSaves());
+  };
+
+  const manualSave=()=>{
+    autoSave(clientName,clientRole,answers,sec);
+    setSaveMsg("Saved!");
+    setTimeout(()=>setSaveMsg(""),2000);
+  };
+
+  const printView=(v)=>{setView(v);setTimeout(()=>window.print(),400);};
+
+  // ── INTRO ────────────────────────────────────────────────────────────────
+  if(screen==="intro"){
+    const saveList=Object.entries(saves).sort((a,b)=>b[1].savedAt-a[1].savedAt);
+    return(
+    <div style={{minHeight:"100vh",position:"relative"}}>
+      <GridBg/><Corners/>
+      <div style={{...S.wrap,textAlign:"center",paddingTop:60}}>
+        <div style={{fontSize:11,letterSpacing:6,color:"#fbbC04",marginBottom:18}}>AUTOMATON SYSTEMS // CLIENT INTAKE v2</div>
+        <h1 style={{fontSize:42,fontWeight:"bold",color:"#e8e4d9",margin:"0 0 14px",lineHeight:1.1}}>
+          AI AGENT<br/><span style={{color:"#fbbC04"}}>DIAGNOSTIC</span>
+        </h1>
+        <p style={{color:"rgba(232,228,217,0.48)",fontSize:14,maxWidth:460,margin:"0 auto 38px",lineHeight:1.85}}>
+          21 questions. Optional schedule upload. Generates a plain-English benefit roadmap for your client and a private technical build plan for you.
+        </p>
+
+        {/* Saved sessions */}
+        {saveList.length>0&&(
+          <div style={{maxWidth:480,margin:"0 auto 32px",textAlign:"left"}}>
+            <div style={{fontSize:11,letterSpacing:3,color:"#58d68d",marginBottom:12}}>SAVED SESSIONS — CONTINUE WHERE YOU LEFT OFF</div>
+            {saveList.map(([name,data])=>{
+              const pct=Math.round((Object.keys(data.answers||{}).filter(k=>data.answers[k]?.trim()).length/ALL_Q.length)*100);
+              const date=new Date(data.savedAt).toLocaleDateString();
+              return(
+                <div key={name} onClick={()=>loadSave(name)}
+                  style={{...S.card,cursor:"pointer",borderColor:"rgba(88,214,141,0.25)",background:"rgba(88,214,141,0.04)",
+                    display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div>
+                    <div style={{fontWeight:"bold",color:"#e8e4d9",fontSize:14,marginBottom:2}}>{name}</div>
+                    <div style={{fontSize:11,color:"rgba(232,228,217,0.4)"}}>{data.clientRole} // {pct}% complete // saved {date}</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"#58d68d",letterSpacing:1}}>RESUME →</span>
+                    <button onClick={(e)=>handleDeleteSave(name,e)}
+                      style={{background:"transparent",border:"1px solid rgba(255,107,107,0.3)",color:"#ff6b6b",
+                        fontSize:11,padding:"3px 8px",cursor:"pointer",borderRadius:2}}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,maxWidth:520,margin:"0 auto 36px"}}>
+          {[["21 Questions","5 diagnostic sections"],["Schedule Upload","PDF · CSV · ICS · TXT"],["Two Roadmaps","Client view + Builder view"]].map(([t,sub])=>(
+            <div key={t} style={S.card}>
+              <div style={{color:"#fbbC04",fontSize:12,fontWeight:"bold",marginBottom:3}}>{t}</div>
+              <div style={S.dim}>{sub}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:11,letterSpacing:3,color:"rgba(251,188,4,0.55)",marginBottom:16}}>START NEW SESSION</div>
+        <div style={{maxWidth:400,margin:"0 auto 28px",textAlign:"left"}}>
+          <label style={S.lbl}>CLIENT NAME</label>
+          <input style={{...S.inp,marginBottom:14}} placeholder="John Smith" value={clientName} onChange={e=>setClientName(e.target.value)}/>
+          <label style={S.lbl}>JOB TITLE / ROLE</label>
+          <input style={S.inp} placeholder="Architecture Project Manager" value={clientRole} onChange={e=>setClientRole(e.target.value)}/>
+        </div>
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+          <button
+            style={{...S.btn,opacity:clientName.trim()&&clientRole.trim()?1:0.3,cursor:clientName.trim()&&clientRole.trim()?"pointer":"not-allowed"}}
+            onClick={()=>clientName.trim()&&clientRole.trim()&&setScreen("form")}>
+            BEGIN DIAGNOSTIC →
+          </button>
+          <button style={S.ghost} onClick={()=>{
+            const demoName="Kevin (Demo)";
+            const demoRole="Architecture Project Manager";
+            const demoAnswers={};
+            ALL_Q.forEach(q=>{demoAnswers[q.id]=q.example||"";});
+            setClientName(demoName);
+            setClientRole(demoRole);
+            setAnswers(demoAnswers);
+            setSec(0);
+            autoSave(demoName,demoRole,demoAnswers,0);
+            setScreen("form");
+          }}>
+            ▶ LOAD DEMO ANSWERS
+          </button>
+        </div>
+      </div>
+    </div>
+  );};
+
+  // ── FORM ─────────────────────────────────────────────────────────────────
+  if(screen==="form") return(
+    <div style={{minHeight:"100vh",position:"relative"}}>
+      <GridBg/><Corners/>
+      <div style={S.wrap}>
+        <div style={{marginBottom:32}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{fontSize:11,letterSpacing:3,color:"#fbbC04"}}>SECTION {section.id} OF {SECTIONS.length}</span>
+            <span style={S.dim}>{Math.round(progress)}% COMPLETE</span>
+          </div>
+          <div style={{height:2,background:"rgba(251,188,4,0.1)",borderRadius:1}}>
+            <div style={{height:"100%",background:"#fbbC04",borderRadius:1,width:`${progress}%`,transition:"width 0.4s"}}/>
+          </div>
+          <div style={{display:"flex",gap:4,marginTop:10}}>
+            {SECTIONS.map((s,i)=>(
+              <div key={s.id} style={{flex:1,height:3,borderRadius:1,
+                background:i<sec?"#fbbC04":i===sec?"rgba(251,188,4,0.4)":"rgba(251,188,4,0.1)",
+                transition:"background 0.3s"}}/>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={S.sh}>SECTION {section.id}</div>
+            <h2 style={{fontSize:26,color:"#e8e4d9",margin:0}}>{section.title}</h2>
+            <div style={{fontSize:11,color:"rgba(232,228,217,0.28)",marginTop:4}}>{clientName.toUpperCase()} // {clientRole.toUpperCase()}</div>
+          </div>
+          <button onClick={manualSave} style={{...S.blue,fontSize:11,padding:"7px 14px",whiteSpace:"nowrap"}}>
+            {saveMsg||"💾 SAVE"}
+          </button>
+        </div>
+
+        {error&&(
+          <div style={{border:"1px solid #c0392b",background:"rgba(192,57,43,0.1)",padding:"12px 16px",marginBottom:18,borderRadius:2,color:"#ff6b6b",fontSize:13}}>
+            {error}
+          </div>
+        )}
+
+        <div style={{marginBottom:28}}>
+          {section.questions.map(q=>(
+            <div key={q.id} style={{marginBottom:22}}>
+              <label style={{display:"block",marginBottom:7}}>
+                <span style={{color:"#fbbC04",fontSize:11,letterSpacing:2}}>Q{q.id} </span>
+                <span style={{fontSize:14,color:"rgba(232,228,217,0.8)",lineHeight:1.6}}>{q.text}</span>
+              </label>
+              <textarea style={S.ta}
+                placeholder={q.example||"Your answer..."}
+                value={answers[q.id]||""}
+                onChange={e=>{
+                  const newAns={...answers,[q.id]:e.target.value};
+                  setAnswers(newAns);
+                  autoSave(clientName,clientRole,newAns,sec);
+                }}/>
+            </div>
+          ))}
+        </div>
+
+        {sec===SECTIONS.length-1&&(
+          <div style={{...S.card,borderColor:"rgba(89,164,255,0.22)",background:"rgba(89,164,255,0.04)",marginBottom:24}}>
+            <div style={{fontSize:11,letterSpacing:3,color:"#89a4ff",marginBottom:10}}>OPTIONAL — UPLOAD SCHEDULE</div>
+            <p style={{color:"rgba(232,228,217,0.45)",fontSize:12,margin:"0 0 14px",lineHeight:1.7}}>
+              Upload a calendar export, work schedule, or weekly plan (PDF, CSV, ICS, TXT). The AI will factor your time patterns into the roadmap.
+            </p>
+            <input ref={fileRef} type="file" accept=".pdf,.csv,.ics,.txt" style={{display:"none"}} onChange={handleFile}/>
+            <button style={S.blue} onClick={()=>fileRef.current.click()}>
+              {calFile?`✓ ${calFile}`:"UPLOAD FILE →"}
+            </button>
+            {calFile&&(
+              <button style={{...S.ghost,marginLeft:10,fontSize:11}} onClick={()=>{setCalFile("");setCalText("");}}>REMOVE</button>
+            )}
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between"}}>
+          <button style={S.ghost} onClick={()=>sec>0&&setSec(p=>p-1)} disabled={sec===0}>← BACK</button>
+          <button
+            style={{...S.btn,opacity:secDone?1:0.3,cursor:secDone?"pointer":"not-allowed"}}
+            onClick={secDone?handleNext:undefined}>
+            {sec===SECTIONS.length-1?"RUN ANALYSIS →":"NEXT →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── ANALYZING ────────────────────────────────────────────────────────────
+  if(screen==="analyzing") return(
+    <div style={{minHeight:"100vh",position:"relative"}}>
+      <GridBg/><Corners/>
+      <div style={{...S.wrap,textAlign:"center",paddingTop:130}}>
+        <div style={{fontSize:11,letterSpacing:6,color:"#fbbC04",marginBottom:26}}>PROCESSING DIAGNOSTIC</div>
+        <div style={{fontSize:52,marginBottom:16}}>⬡</div>
+        <h2 style={{fontSize:22,color:"#e8e4d9",marginBottom:10}}>Analyzing {clientName}'s Workflow</h2>
+        <p style={{color:"rgba(232,228,217,0.38)",fontSize:13,lineHeight:1.9}}>
+          Mapping pain points to automation opportunities<br/>
+          {calFile&&`Parsing schedule: ${calFile}`}
+        </p>
+        <div style={{marginTop:32,display:"flex",justifyContent:"center",gap:7}}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#fbbC04",
+              animation:`pulse 1.2s ease-in-out ${i*0.4}s infinite`}}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── REPORT ───────────────────────────────────────────────────────────────
+  if(screen==="report"&&report){
+    const isC=view==="client";
+    return(
+      <div style={{minHeight:"100vh",position:"relative"}}>
+        <GridBg/><Corners/>
+        <div style={S.wrap}>
+
+          {/* Nav */}
+          <div className="np" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:26,flexWrap:"wrap",gap:10}}>
+            <button style={S.ghost} onClick={reset}>← NEW CLIENT</button>
+            <div style={{display:"flex",border:"1px solid rgba(251,188,4,0.18)",borderRadius:2,overflow:"hidden"}}>
+              {["client","builder"].map(v=>(
+                <button key={v}
+                  style={{...S.btn,background:view===v?"#fbbC04":"transparent",
+                    color:view===v?"#0a0e1a":"rgba(232,228,217,0.45)",
+                    borderRadius:0,padding:"9px 18px",fontSize:11,letterSpacing:2}}
+                  onClick={()=>setView(v)}>
+                  {v==="client"?"CLIENT VIEW":"🔧 BUILDER VIEW"}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button style={S.blue} onClick={()=>printView("client")}>EXPORT CLIENT PDF</button>
+              <button style={S.gold} onClick={()=>printView("builder")}>EXPORT BUILDER PDF</button>
+            </div>
+          </div>
+
+          {/* Header */}
+          <div style={{borderBottom:"1px solid rgba(251,188,4,0.18)",paddingBottom:20,marginBottom:24}}>
+            <div style={{fontSize:11,letterSpacing:5,color:"#fbbC04",marginBottom:6}}>
+              {isC?"AI AUTOMATION PROPOSAL":"TECHNICAL BUILD PLAN // CONFIDENTIAL"}
+            </div>
+            <h1 style={{fontSize:28,color:"#e8e4d9",margin:"0 0 4px"}}>
+              {isC?`${clientName} — Your AI Assistant Plan`:`${clientName} — Builder Specification`}
+            </h1>
+            <div style={{color:"rgba(232,228,217,0.3)",fontSize:11}}>
+              {clientRole.toUpperCase()} // {report.jobType?.toUpperCase()} // {new Date().toLocaleDateString()}
+              {calFile&&` // SCHEDULE: ${calFile.toUpperCase()}`}
+            </div>
+          </div>
+
+          {/* ═══ CLIENT VIEW ═══════════════════════════════════════════════ */}
+          {isC&&(
+            <div style={{animation:"fadeIn 0.3s ease"}}>
+
+              <div style={{...S.card,borderColor:"rgba(251,188,4,0.32)",marginBottom:24}}>
+                <div style={S.sh}>YOUR SITUATION</div>
+                <p style={{margin:0,fontSize:14,color:"rgba(232,228,217,0.82)",lineHeight:1.85}}>{report.clientSummary}</p>
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>WHERE YOU'RE LOSING TIME</div>
+                <h2 style={S.h2}>Your Top Friction Points</h2>
+                {report.topPainPoints?.map((pp,i)=>(
+                  <div key={i} style={{...S.card,borderLeft:"3px solid rgba(251,188,4,0.35)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{fontWeight:"bold",fontSize:14,color:"#e8e4d9"}}>{pp.pain}</span>
+                      <Badge label={pp.severity} color={sevC[pp.severity]}/>
+                    </div>
+                    <div style={{fontSize:12,color:"rgba(232,228,217,0.42)",fontStyle:"italic"}}>"{pp.evidence}"</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>WHAT CHANGES FOR YOU</div>
+                <h2 style={S.h2}>Your AI Assistants</h2>
+                {report.recommendedAgents?.map((a,i)=>(
+                  <div key={i} style={{...S.card,borderLeft:`3px solid ${i===0?"#fbbC04":"rgba(251,188,4,0.18)"}`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                      {i===0&&<span style={{fontSize:10,color:"#58d68d",letterSpacing:2}}>START HERE</span>}
+                      <span style={{fontWeight:"bold",fontSize:15,color:"#fbbC04"}}>{a.name}</span>
+                    </div>
+                    <p style={{margin:0,fontSize:13,color:"rgba(232,228,217,0.78)",lineHeight:1.8}}>{a.clientBenefit}</p>
+                  </div>
+                ))}
+              </div>
+
+              {report.calendarInsights&&(
+                <div style={{...S.card,borderColor:"rgba(89,164,255,0.28)",background:"rgba(89,164,255,0.04)",marginBottom:24}}>
+                  <div style={{fontSize:11,letterSpacing:3,color:"#89a4ff",marginBottom:10}}>SCHEDULE ANALYSIS</div>
+                  <p style={{margin:0,fontSize:13,color:"rgba(232,228,217,0.72)",lineHeight:1.8}}>{report.calendarInsights}</p>
+                </div>
+              )}
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>YOUR ROLLOUT PLAN</div>
+                <h2 style={S.h2}>What Happens & When</h2>
+                <div style={{position:"relative"}}>
+                  <div style={{position:"absolute",left:13,top:0,bottom:0,width:1,background:"rgba(251,188,4,0.13)"}}/>
+                  {report.clientRoadmap?.map((phase,i)=>(
+                    <div key={i} style={{display:"flex",gap:20,marginBottom:22,paddingLeft:4}}>
+                      <div style={{width:18,height:18,borderRadius:"50%",border:"2px solid #fbbC04",background:"#0a0e1a",flexShrink:0,marginTop:2,zIndex:1,position:"relative"}}/>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:6}}>
+                          <span style={{fontWeight:"bold",color:"#e8e4d9",fontSize:14}}>Phase {phase.phase}: {phase.label}</span>
+                          <span style={{color:"rgba(251,188,4,0.55)",fontSize:11}}>{phase.timeframe}</span>
+                        </div>
+                        <p style={{margin:"0 0 10px",fontSize:13,color:"rgba(232,228,217,0.65)",lineHeight:1.8}}>{phase.whatChanges}</p>
+                        {phase.milestones?.map((m,mi)=>(
+                          <div key={mi} style={{display:"flex",gap:8,fontSize:12,color:"rgba(232,228,217,0.6)",marginBottom:4}}>
+                            <span style={{color:"#58d68d"}}>✓</span><span>{m}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {report.quickWins?.length>0&&(
+                <div style={{...S.card,borderColor:"rgba(88,214,141,0.28)",background:"rgba(88,214,141,0.03)",marginBottom:24}}>
+                  <div style={{fontSize:11,letterSpacing:3,color:"#58d68d",marginBottom:10}}>⚡ STARTING THIS WEEK</div>
+                  {report.quickWins.map((w,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,fontSize:13,color:"rgba(232,228,217,0.75)",lineHeight:1.7,marginBottom:6}}>
+                      <span style={{color:"#58d68d"}}>→</span><span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═══ BUILDER VIEW ══════════════════════════════════════════════ */}
+          {!isC&&(
+            <div style={{animation:"fadeIn 0.3s ease"}}>
+
+              <div style={{...S.card,borderColor:"rgba(244,208,63,0.3)",background:"rgba(244,208,63,0.03)",marginBottom:24}}>
+                <div style={{fontSize:11,letterSpacing:3,color:"#f4d03f",marginBottom:8}}>DIAGNOSTIC SUMMARY</div>
+                <p style={{margin:0,fontSize:13,color:"rgba(232,228,217,0.78)",lineHeight:1.8}}>{report.clientSummary}</p>
+                <div style={{marginTop:10,fontSize:11,color:"rgba(232,228,217,0.3)"}}>
+                  TYPE: {report.jobType?.toUpperCase()} // AGENTS: {report.recommendedAgents?.length} // {new Date().toLocaleDateString()}
+                </div>
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>IDENTIFIED PAIN POINTS</div>
+                <h2 style={S.h2}>Mapped from Client Answers</h2>
+                {report.topPainPoints?.map((pp,i)=>(
+                  <div key={i} style={{...S.card,borderLeft:"3px solid rgba(244,208,63,0.35)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{fontWeight:"bold",color:"#e8e4d9",fontSize:14}}>{pp.pain}</span>
+                      <Badge label={pp.severity} color={sevC[pp.severity]}/>
+                    </div>
+                    <div style={{fontSize:12,color:"rgba(232,228,217,0.4)",fontStyle:"italic"}}>Evidence: "{pp.evidence}"</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>AGENT SPECIFICATIONS</div>
+                <h2 style={S.h2}>Technical Build Details</h2>
+                {report.recommendedAgents?.map((a,i)=>(
+                  <div key={i} style={{...S.card,marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                      <div>
+                        <span style={{color:"rgba(244,208,63,0.4)",fontSize:11,marginRight:8}}>#{a.priority}</span>
+                        <span style={{fontWeight:"bold",fontSize:15,color:"#f4d03f"}}>{a.name}</span>
+                      </div>
+                      <Badge label={a.buildComplexity} color={cplxC[a.buildComplexity]}/>
+                    </div>
+                    <p style={{margin:"0 0 5px",fontSize:13,color:"rgba(232,228,217,0.78)",lineHeight:1.6}}><b>What:</b> {a.what}</p>
+                    <p style={{margin:"0 0 14px",fontSize:13,color:"rgba(232,228,217,0.56)",lineHeight:1.6}}><b>Why:</b> {a.why}</p>
+                    {a.technicalSpec&&(
+                      <div style={{borderTop:"1px solid rgba(251,188,4,0.1)",paddingTop:14}}>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:10}}>
+                          {[["Stack",a.technicalSpec.stack],["Integrations",a.technicalSpec.integrations],["Dependencies",a.technicalSpec.dependencies]].map(([lbl,items])=>
+                            items?.length>0&&(
+                              <div key={lbl}>
+                                <div style={{fontSize:10,letterSpacing:2,color:"rgba(244,208,63,0.45)",marginBottom:5}}>{lbl.toUpperCase()}</div>
+                                <div>{items.map(t=><span key={t} style={S.tag}>{t}</span>)}</div>
+                              </div>
+                            )
+                          )}
+                          <div>
+                            <div style={{fontSize:10,letterSpacing:2,color:"rgba(244,208,63,0.45)",marginBottom:5}}>TRIGGER</div>
+                            <div style={{fontSize:12,color:"rgba(232,228,217,0.55)"}}>{a.technicalSpec.triggerMechanism}</div>
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,letterSpacing:2,color:"rgba(244,208,63,0.45)",marginBottom:5}}>OUTPUT</div>
+                            <div style={{fontSize:12,color:"rgba(232,228,217,0.55)"}}>{a.technicalSpec.outputFormat}</div>
+                          </div>
+                        </div>
+                        <div style={{fontSize:11,color:"rgba(232,228,217,0.28)",display:"flex",justifyContent:"space-between"}}>
+                          <span>BUILD TIME: {a.technicalSpec.estimatedBuildTime}</span>
+                          <span>PRIORITY #{a.priority}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {report.calendarInsights&&(
+                <div style={{...S.card,borderColor:"rgba(89,164,255,0.28)",background:"rgba(89,164,255,0.04)",marginBottom:24}}>
+                  <div style={{fontSize:11,letterSpacing:3,color:"#89a4ff",marginBottom:10}}>SCHEDULE ANALYSIS — {calFile}</div>
+                  <p style={{margin:0,fontSize:13,color:"rgba(232,228,217,0.72)",lineHeight:1.8}}>{report.calendarInsights}</p>
+                </div>
+              )}
+
+              <div style={{marginBottom:24}}>
+                <div style={S.sh}>TECHNICAL BUILD ROADMAP</div>
+                <h2 style={S.h2}>Phase-by-Phase Implementation</h2>
+                <div style={{position:"relative"}}>
+                  <div style={{position:"absolute",left:13,top:0,bottom:0,width:1,background:"rgba(244,208,63,0.13)"}}/>
+                  {report.builderRoadmap?.map((phase,i)=>(
+                    <div key={i} style={{display:"flex",gap:20,marginBottom:26,paddingLeft:4}}>
+                      <div style={{width:18,height:18,borderRadius:"50%",border:"2px solid #f4d03f",background:"#0a0e1a",flexShrink:0,marginTop:2,zIndex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{fontSize:9,color:"#f4d03f",fontWeight:"bold"}}>{phase.phase}</span>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                          <span style={{fontWeight:"bold",color:"#f4d03f",fontSize:14}}>Phase {phase.phase}: {phase.label}</span>
+                          <span style={{color:"rgba(244,208,63,0.5)",fontSize:11}}>{phase.timeframe}</span>
+                        </div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
+                          {phase.agents?.map(ag=><span key={ag} style={{...S.tag,color:"#f4d03f",borderColor:"rgba(244,208,63,0.22)"}}>{ag}</span>)}
+                        </div>
+                        <div style={{marginBottom:10}}>
+                          {phase.tasks?.map((t,ti)=>(
+                            <div key={ti} style={{display:"flex",gap:8,fontSize:12,color:"rgba(232,228,217,0.6)",marginBottom:4}}>
+                              <span style={{color:"rgba(244,208,63,0.4)"}}>{ti+1}.</span><span>{t}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                          {phase.stack?.map(st=><span key={st} style={S.tag}>{st}</span>)}
+                        </div>
+                        {phase.blockers?.length>0&&<div style={{fontSize:11,color:"#ff6b6b",marginBottom:6}}>⚠ {phase.blockers.join(" · ")}</div>}
+                        <div style={{fontSize:11,color:"rgba(88,214,141,0.65)",borderTop:"1px solid rgba(251,188,4,0.08)",paddingTop:8}}>
+                          DELIVERABLE → {phase.deliverable}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {report.quickWins?.length>0&&(
+                <div style={{...S.card,borderColor:"rgba(88,214,141,0.28)",background:"rgba(88,214,141,0.03)",marginBottom:18}}>
+                  <div style={{fontSize:11,letterSpacing:3,color:"#58d68d",marginBottom:10}}>⚡ QUICK WINS — BUILD FIRST</div>
+                  {report.quickWins.map((w,i)=>(
+                    <div key={i} style={{display:"flex",gap:10,fontSize:13,color:"rgba(232,228,217,0.75)",lineHeight:1.7,marginBottom:6}}>
+                      <span style={{color:"#58d68d"}}>→</span><span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {report.notes&&(
+                <div style={{...S.card,borderColor:"rgba(255,107,107,0.25)",background:"rgba(255,107,107,0.03)",marginBottom:24}}>
+                  <div style={{fontSize:11,letterSpacing:3,color:"#ff6b6b",marginBottom:10}}>⚠ BUILDER NOTES — PRIVATE</div>
+                  <p style={{margin:0,fontSize:13,color:"rgba(232,228,217,0.65)",lineHeight:1.8}}>{report.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="np" style={{display:"flex",gap:10,justifyContent:"center",paddingBottom:48,flexWrap:"wrap"}}>
+            <button style={S.ghost} onClick={reset}>NEW CLIENT</button>
+            <button style={S.blue} onClick={()=>printView("client")}>EXPORT CLIENT PDF</button>
+            <button style={S.gold} onClick={()=>printView("builder")}>EXPORT BUILDER PDF</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
