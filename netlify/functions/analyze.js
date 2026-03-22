@@ -1,3 +1,4 @@
+exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -9,8 +10,8 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-"x-api-key": process.env.ANTHROPIC_API_KEY,       
- "anthropic-version": "2023-06-01",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
@@ -24,7 +25,10 @@
 
     return {
       statusCode: 200,
-      headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(data),
     };
   } catch (err) {
